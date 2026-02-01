@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Screeps Trainer MVP</title>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; background: #0b0f14; color: #e6edf3; }
+    #topbar { display:flex; gap:12px; align-items:center; padding:10px 12px; background:#111824; }
+    #canvasWrap { display:flex; justify-content:center; padding:10px; }
+    canvas { background:#0b0f14; image-rendering: pixelated; border: 1px solid #223; }
+    .pill { padding:4px 8px; background:#182234; border:1px solid #223; border-radius:999px; font-size:12px; }
+    button { background:#1f6feb; color:white; border:none; padding:6px 10px; border-radius:8px; cursor:pointer; }
+    button:active { transform: translateY(1px); }
+  </style>
+</head>
+<body>
+  <div id="topbar">
+    <div class="pill" id="status">disconnected</div>
+    <div class="pill" id="tick">tick: -</div>
+    <button id="toggle">pause</button>
+  </div>
+  <div id="canvasWrap">
+    <canvas id="room" width="800" height="800"></canvas>
+  </div>
+
+  <script type="module" src="/client.js"></script>
+</body>
+</html>
+
