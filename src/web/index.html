@@ -12,6 +12,53 @@
     .pill { padding:4px 8px; background:#182234; border:1px solid #223; border-radius:999px; font-size:12px; }
     button { background:#1f6feb; color:white; border:none; padding:6px 10px; border-radius:8px; cursor:pointer; }
     button:active { transform: translateY(1px); }
+
+    /* --- Right-side fixed panel (does NOT move the canvas) --- */
+    #rightPanel {
+      position: fixed;
+      top: 0;
+      right: 0;
+
+      width: 260px;
+      height: 100vh;
+      box-sizing: border-box;
+
+      padding: 12px;
+      background: rgba(15, 15, 15, 0.92);
+      border-left: 1px solid rgba(255,255,255,0.12);
+
+      z-index: 9999;
+    }
+
+    #rightPanel h3 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      font-weight: 700;
+      color: #e6edf3;
+    }
+
+    #tileInfo {
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    #tileInfo > div {
+      margin: 6px 0;
+      padding: 6px 8px;
+      background: rgba(24, 34, 52, 0.5);
+      border: 1px solid rgba(34, 51, 68, 0.9);
+      border-radius: 8px;
+    }
+
+    #tileInfo b {
+      display: inline-block;
+      width: 70px;
+      color: rgba(230, 237, 243, 0.9);
+    }
+
+    #tileInfo span {
+      color: #ffffff;
+    }
   </style>
 </head>
 <body>
@@ -20,8 +67,19 @@
     <div class="pill" id="tick">tick: -</div>
     <button id="toggle">pause</button>
   </div>
+
   <div id="canvasWrap">
     <canvas id="room" width="800" height="800"></canvas>
+  </div>
+
+  <!-- Fixed panel: overlays on the right; does not affect map alignment -->
+  <div id="rightPanel">
+    <h3>Tile</h3>
+    <div id="tileInfo">
+      <div><b>x:</b> <span id="tileX">-</span></div>
+      <div><b>y:</b> <span id="tileY">-</span></div>
+      <div><b>terrain:</b> <span id="tileTerrain">-</span></div>
+    </div>
   </div>
 
   <script type="module" src="/client.js"></script>

@@ -10,6 +10,9 @@ const ctx = canvas.getContext("2d")!;
 const statusEl = document.getElementById("status")!;
 const tickEl = document.getElementById("tick")!;
 const toggleBtn = document.getElementById("toggle") as HTMLButtonElement;
+const tileXEl = document.getElementById("tileX")!;
+const tileYEl = document.getElementById("tileY")!;
+const tileTerrainEl = document.getElementById("tileTerrain")!;
 
 /**
  * =========
@@ -48,6 +51,12 @@ function terrainAt(terrainStr: string, x: number, y: number): number {
   return terrainStr.charCodeAt(y * W + x) - 48;
 }
 
+function terrainName(v: number): "plain" | "wall" | "swamp" {
+  if (v === 1) return "wall";
+  if (v === 2) return "swamp";
+  return "plain";
+}
+
 /**
  * Convert a mouse event to a tile coordinate.
  * This handles CSS scaling properly (rect.width/height may differ from canvas.width/height).
@@ -73,13 +82,32 @@ function mouseToTile(ev: MouseEvent): TilePos | null {
  * Input / UI
  * =========
  */
+function updateTilePanel() {
+  if (!hovered || !room) {
+    tileXEl.textContent = "-";
+    tileYEl.textContent = "-";
+    tileTerrainEl.textContent = "-";
+    return;
+  }
+
+  tileXEl.textContent = String(hovered.x);
+  tileYEl.textContent = String(hovered.y);
+
+  const t = terrainAt(room.terrain, hovered.x, hovered.y);
+  tileTerrainEl.textContent = terrainName(t);
+}
+
+
+ 
 function initInput(ws: WebSocket) {
   canvas.addEventListener("mousemove", (ev) => {
     hovered = mouseToTile(ev);
+    updateTilePanel();
   });
 
   canvas.addEventListener("mouseleave", () => {
     hovered = null;
+    updateTilePanel();
   });
 
   toggleBtn.onclick = () => {
@@ -590,6 +618,7 @@ function createWebSocket(): WebSocket {
 
     if (msg.type === "room") {
       room = msg.room as RoomExport;
+      updateTilePanel();
     } else if (msg.type === "snap") {
       snapshot = msg.snap as SimSnapshot;
       tickEl.textContent = `tick: ${snapshot.tick}`;
