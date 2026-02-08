@@ -1,16 +1,103 @@
-// noinspection JSUnusedLocalSymbols,JSUnresolvedReference,TypeScriptValidateTypes
-
 import type { RoomExport, SimSnapshot } from "../shared.js";
 
+/**
+ * =========
+ * DOM / Canvas
+ * =========
+ */
 const canvas = document.getElementById("room") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
 const statusEl = document.getElementById("status")!;
 const tickEl = document.getElementById("tick")!;
 const toggleBtn = document.getElementById("toggle") as HTMLButtonElement;
 
+/**
+ * =========
+ * Constants / Types
+ * =========
+ */
 const W = 50;
 const H = 50;
 
+type TilePos = { x: number; y: number };
+
+/**
+ * =========
+ * State
+ * =========
+ */
+let paused = false;
+
+let room: RoomExport | null = null;
+let snapshot: SimSnapshot | null = null;
+
+let hovered: TilePos | null = null;
+
+/**
+ * Simple scale: pixels per tile.
+ * NOTE: if you later support zoom/pan, this becomes dynamic.
+ */
+const tile = Math.floor(Math.min(canvas.width / W, canvas.height / H));
+
+/**
+ * =========
+ * Coordinate Helpers
+ * =========
+ */
+function terrainAt(terrainStr: string, x: number, y: number): number {
+  return terrainStr.charCodeAt(y * W + x) - 48;
+}
+
+/**
+ * Convert a mouse event to a tile coordinate.
+ * This handles CSS scaling properly (rect.width/height may differ from canvas.width/height).
+ */
+function mouseToTile(ev: MouseEvent): TilePos | null {
+  const rect = canvas.getBoundingClientRect();
+
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+
+  const mx = (ev.clientX - rect.left) * scaleX;
+  const my = (ev.clientY - rect.top) * scaleY;
+
+  const tx = Math.floor(mx / tile);
+  const ty = Math.floor(my / tile);
+
+  if (tx < 0 || tx >= W || ty < 0 || ty >= H) return null;
+  return { x: tx, y: ty };
+}
+
+/**
+ * =========
+ * Input / UI
+ * =========
+ */
+function initInput(ws: WebSocket) {
+  canvas.addEventListener("mousemove", (ev) => {
+    hovered = mouseToTile(ev);
+  });
+
+  canvas.addEventListener("mouseleave", () => {
+    hovered = null;
+  });
+
+  toggleBtn.onclick = () => {
+    paused = !paused;
+    toggleBtn.textContent = paused ? "resume" : "pause";
+
+    // guard: if ws isn't open yet, don't throw
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: paused ? "pause" : "resume" }));
+    }
+  };
+}
+
+/**
+ * =========
+ * Drawing Primitives
+ * =========
+ */
 function drawCircle(x: number, y: number, r: number, fill?: string, stroke?: string, lineWidth = 2) {
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -25,16 +112,16 @@ function drawCircle(x: number, y: number, r: number, fill?: string, stroke?: str
   }
 }
 
-function drawCreep(
-  px: number,
-  py: number,
-  energy: number,
-  capacity: number
-) {
+/**
+ * =========
+ * Entity Drawing
+ * =========
+ */
+function drawCreep(px: number, py: number, energy: number, capacity: number) {
   const cx = px + tile / 2;
   const cy = py + tile / 2;
 
-  const rOuter = tile * 0.50;
+  const rOuter = tile * 0.5;
 
   // Thickness of black rim (tweak this if desired)
   const rim = Math.max(3, tile * 0.3);
@@ -67,23 +154,22 @@ function drawCreep(
   ctx.moveTo(cx, cy - rOuter);
   ctx.lineTo(cx, cy - rOuter * 0.85);
   ctx.stroke();
-  
+
   // --- small green back tick (MOVE indicator) ---
   ctx.strokeStyle = "#2ecc71";
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(cx, cy + rOuter * 0.90);
+  ctx.moveTo(cx, cy + rOuter * 0.9);
   ctx.lineTo(cx, cy + rOuter * 0.82);
   ctx.stroke();
 }
-
 
 function drawSpawn(px: number, py: number, energy = 0, capacity = 300) {
   const cx = px + tile / 2;
   const cy = py + tile / 2;
 
-  const rOuter = tile * 0.42;       // spawn body
-  const rFillMax = rOuter * 0.78;   // max inner fill radius
+  const rOuter = tile * 0.42; // spawn body
+  const rFillMax = rOuter * 0.78; // max inner fill radius
 
   const clamped = Math.max(0, Math.min(energy, capacity));
   const ratio = capacity > 0 ? clamped / capacity : 0;
@@ -110,7 +196,7 @@ function drawSpawn(px: number, py: number, energy = 0, capacity = 300) {
   // Optional: spokes to keep "spawn-ness" recognizable
   ctx.strokeStyle = "#2ecc71";
   ctx.lineWidth = 2;
-  const rInner = rOuter * 0.30;
+  const rInner = rOuter * 0.3;
   for (let i = 0; i < 3; i++) {
     const a = (i * (Math.PI * 2)) / 3 - Math.PI / 2;
     ctx.beginPath();
@@ -124,7 +210,7 @@ function drawExtension(px: number, py: number, energy = 0, capacity = 50) {
   const cx = px + tile / 2;
   const cy = py + tile / 2;
 
-  const rOuter = tile * 0.28;     // extension body
+  const rOuter = tile * 0.28; // extension body
   const rFillMax = rOuter * 0.82; // max inner fill radius
 
   const clamped = Math.max(0, Math.min(energy, capacity));
@@ -198,7 +284,7 @@ function drawTower(px: number, py: number, energy = 0, capacity = 1000) {
 
   // --- Cannon (sticks slightly outside circle) ---
   const gunW = tile * 0.18;
-  const gunH = tile * 0.40;
+  const gunH = tile * 0.4;
 
   const gunX = cx - gunW / 2;
   const gunY = baseY - gunH + tile * 0.06;
@@ -218,10 +304,10 @@ function drawContainer(px: number, py: number, energy = 0, capacity = 2000) {
 
   // Tall vertical battery
   const w = tile * 0.45;
-  const h = tile * 0.80;
+  const h = tile * 0.8;
 
   const x = cx - w / 2;
-  const y = py + tile * 0.10;
+  const y = py + tile * 0.1;
 
   const clamped = Math.max(0, Math.min(energy, capacity));
   const ratio = capacity > 0 ? clamped / capacity : 0;
@@ -316,12 +402,7 @@ function drawStorage(px: number, py: number, energy = 0, capacity = 100000) {
   // Optional: little center hatch so it reads as "storage"
   const hatch = size * 0.18;
   ctx.fillStyle = "#222";
-  ctx.fillRect(
-    x + size / 2 - hatch / 2,
-    y + size / 2 - hatch / 2,
-    hatch,
-    hatch
-  );
+  ctx.fillRect(x + size / 2 - hatch / 2, y + size / 2 - hatch / 2, hatch, hatch);
 
   ctx.restore();
 }
@@ -331,9 +412,9 @@ function drawLink(px: number, py: number) {
   const cy = py + tile / 2;
 
   // Tighter spacing = thinner outlines
-  const rOuter = tile * 0.40;   // green shell
-  const rMid   = tile * 0.32;   // black border
-  const rInner = tile * 0.22;   // gray core (bigger)
+  const rOuter = tile * 0.4; // green shell
+  const rMid = tile * 0.32; // black border
+  const rInner = tile * 0.22; // gray core (bigger)
 
   ctx.save();
 
@@ -366,23 +447,32 @@ function drawLink(px: number, py: number) {
   ctx.restore();
 }
 
-let paused = false;
-toggleBtn.onclick = () => {
-  paused = !paused;
-  toggleBtn.textContent = paused ? "resume" : "pause";
-  ws.send(JSON.stringify({ type: paused ? "pause" : "resume" }));
-};
+/**
+ * =========
+ * Overlays
+ * =========
+ */
+function drawHoverOverlay() {
+  if (!hovered) return;
 
-let room: RoomExport | null = null;
-let snapshot: SimSnapshot | null = null;
+  const px = hovered.x * tile;
+  const py = hovered.y * tile;
 
-// simple scale
-const tile = Math.floor(Math.min(canvas.width / W, canvas.height / H));
+  // subtle fill
+  ctx.fillStyle = "rgba(255,255,255,0.08)";
+  ctx.fillRect(px, py, tile, tile);
 
-function terrainAt(terrainStr: string, x: number, y: number): number {
-  return terrainStr.charCodeAt(y * W + x) - 48;
+  // crisp border
+  ctx.strokeStyle = "rgba(255,255,255,0.8)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(px + 1, py + 1, tile - 2, tile - 2);
 }
 
+/**
+ * =========
+ * Main Draw
+ * =========
+ */
 function draw() {
   if (!room) return;
 
@@ -390,10 +480,9 @@ function draw() {
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const v = terrainAt(room.terrain, x, y);
-      // colors chosen to be readable; you can style later
-      if (v === 1) ctx.fillStyle = "#000000";      // wall
+      if (v === 1) ctx.fillStyle = "#000000"; // wall
       else if (v === 2) ctx.fillStyle = "#132b1a"; // swamp
-      else ctx.fillStyle = "#0f1724";              // plain
+      else ctx.fillStyle = "#0f1724"; // plain
       ctx.fillRect(x * tile, y * tile, tile, tile);
     }
   }
@@ -408,34 +497,35 @@ function draw() {
 
   // controller
   ctx.fillStyle = "#9b59b6";
-  ctx.fillRect(room.controller.x * tile + tile * 0.2, room.controller.y * tile + tile * 0.2, tile * 0.6, tile * 0.6);
+  ctx.fillRect(
+    room.controller.x * tile + tile * 0.2,
+    room.controller.y * tile + tile * 0.2,
+    tile * 0.6,
+    tile * 0.6
+  );
 
-  // structures (very rough icons)
+  // structures
   for (const st of room.structures) {
     const px = st.x * tile;
     const py = st.y * tile;
 
     switch (st.type) {
       case "spawn": {
-        // TEMP: fake energy (0..300) just to visualize
         const fakeEnergy = 300;
         drawSpawn(px, py, fakeEnergy, 300);
         break;
       }
       case "extension": {
-        // TEMP: fake energy for visualization (0..50)
-        const fakeEnergy = ((st.x * 7 + st.y * 13) % 51); // deterministic 0..50
+        const fakeEnergy = (st.x * 7 + st.y * 13) % 51;
         drawExtension(px, py, fakeEnergy, 50);
         break;
       }
       case "tower": {
-        // TEMP fake energy (0..1000) for visualization
         const fakeEnergy = 800;
         drawTower(px, py, fakeEnergy, 1000);
         break;
       }
       case "container": {
-        // TEMP: fake energy just for visuals (0..2000)
         const fakeEnergy = 1000;
         drawContainer(px, py, fakeEnergy, 2000);
         break;
@@ -444,7 +534,7 @@ function draw() {
         drawRoad(px, py);
         break;
       case "constructedWall":
-        ctx.fillStyle = "#111"; // keep walls very dark
+        ctx.fillStyle = "#111";
         ctx.fillRect(px, py, tile, tile);
         break;
       case "rampart":
@@ -464,12 +554,14 @@ function draw() {
   // creeps
   if (snapshot) {
     for (const c of snapshot.creeps) {
-      const capacity = 50; // 1 CARRY part = 50
+      const capacity = 50;
       const energy = 50;
-
       drawCreep(c.x * tile, c.y * tile, energy, capacity);
     }
   }
+
+  // overlays last
+  drawHoverOverlay();
 }
 
 function rafLoop() {
@@ -477,27 +569,46 @@ function rafLoop() {
   requestAnimationFrame(rafLoop);
 }
 
-// websocket
-const ws = new WebSocket(`ws://${location.host}/ws`);
+/**
+ * =========
+ * Networking
+ * =========
+ */
+function createWebSocket(): WebSocket {
+  const ws = new WebSocket(`ws://${location.host}/ws`);
 
-ws.onopen = () => {
-  statusEl.textContent = "connected";
-};
+  ws.onopen = () => {
+    statusEl.textContent = "connected";
+  };
 
-ws.onclose = () => {
-  statusEl.textContent = "disconnected";
-};
+  ws.onclose = () => {
+    statusEl.textContent = "disconnected";
+  };
 
-ws.onmessage = (ev) => {
-  const msg = JSON.parse(ev.data);
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
 
-  if (msg.type === "room") {
-    room = msg.room as RoomExport;
-  } else if (msg.type === "snap") {
-    snapshot = msg.snap as SimSnapshot;
-    tickEl.textContent = `tick: ${snapshot.tick}`;
-  }
-};
+    if (msg.type === "room") {
+      room = msg.room as RoomExport;
+    } else if (msg.type === "snap") {
+      snapshot = msg.snap as SimSnapshot;
+      tickEl.textContent = `tick: ${snapshot.tick}`;
+    }
+  };
 
-rafLoop();
+  return ws;
+}
+
+/**
+ * =========
+ * Init
+ * =========
+ */
+function init() {
+  const ws = createWebSocket();
+  initInput(ws);
+  rafLoop();
+}
+
+init();
 
