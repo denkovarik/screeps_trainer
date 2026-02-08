@@ -17,9 +17,17 @@ export type SimCreep = {
   targetId: string;
 };
 
+export type SimStructureState = {
+  id: string;
+  energy: number;
+  energyCapacity: number;
+};
+
 export type SimSnapshot = {
   tick: number;
   roomName: string;
   creeps: SimCreep[];
+  structures: SimStructureState[];   // <-- add this
 };
+
 

@@ -59,6 +59,66 @@
     #tileInfo span {
       color: #ffffff;
     }
+
+    /* --- Structure section (same styling as tileInfo) --- */
+    #structureInfo {
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    #structureInfo > div {
+      margin: 6px 0;
+      padding: 6px 8px;
+      background: rgba(24, 34, 52, 0.5);
+      border: 1px solid rgba(34, 51, 68, 0.9);
+      border-radius: 8px;
+    }
+
+    #structureInfo b {
+      display: inline-block;
+      width: 70px;
+      color: rgba(230, 237, 243, 0.9);
+    }
+
+    #structureInfo span {
+      color: #ffffff;
+    }
+
+    /* --- Multi-structure picker tooltip --- */
+    #pickTooltip{
+      position: fixed;             /* viewport coordinates */
+      display: none;
+      min-width: 160px;
+      max-width: 240px;
+      padding: 6px;
+      background: rgba(15, 15, 15, 0.96);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 10px;
+      box-shadow: 0 10px 24px rgba(0,0,0,0.45);
+      z-index: 10000;
+      font-size: 13px;
+    }
+
+    #pickTooltip .title{
+      font-size: 12px;
+      opacity: 0.85;
+      margin: 2px 6px 6px;
+    }
+
+    #pickTooltip .item{
+      padding: 6px 8px;
+      margin: 4px 0;
+      border-radius: 8px;
+      cursor: pointer;
+      user-select: none;
+      background: rgba(24, 34, 52, 0.55);
+      border: 1px solid rgba(34, 51, 68, 0.9);
+    }
+
+    #pickTooltip .item:hover{
+      background: rgba(31, 111, 235, 0.25);
+      border-color: rgba(31, 111, 235, 0.6);
+    }
   </style>
 </head>
 <body>
@@ -80,7 +140,21 @@
       <div><b>y:</b> <span id="tileY">-</span></div>
       <div><b>terrain:</b> <span id="tileTerrain">-</span></div>
     </div>
+
+    <!-- Hidden by default; client.ts will show/hide this on click -->    
+    <div id="structureSection" style="display:none; margin-top:12px;">
+      <h3>Structure</h3>
+
+      <div><b>Type:</b> <span id="structureType">-</span></div>
+      <div><b>Pos:</b> <span id="structurePos">-</span></div>
+      <div><b>Hits:</b> <span id="structureHits">-</span></div>
+      <div><b>Decay:</b> <span id="structureDecay">-</span></div>
+    </div>
+    
   </div>
+
+  <!-- Tooltip for selecting between multiple structures on one tile -->
+  <div id="pickTooltip"></div>
 
   <script type="module" src="/client.js"></script>
 </body>
