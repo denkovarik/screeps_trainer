@@ -22,6 +22,12 @@ const structurePosEl = document.getElementById("structurePos")!;
 const structureHitsEl = document.getElementById("structureHits")!;
 const structureDecayEl = document.getElementById("structureDecay")!;
 
+// Right panel creep section
+const creepSectionEl = document.getElementById("creepSection") as HTMLDivElement;
+const creepIdEl = document.getElementById("creepId")!;
+const creepPosEl = document.getElementById("creepPos")!;
+const creepTargetEl = document.getElementById("creepTarget")!;
+
 // Tooltip picker
 const pickTooltipEl = document.getElementById("pickTooltip") as HTMLDivElement;
 
@@ -102,6 +108,21 @@ function rebuildStructureIndex() {
   }
 }
 
+// Lookup: "x,y" -> creeps[]
+const creepsByPos = new Map<string, SimSnapshot["creeps"][number][]>();
+
+function rebuildCreepIndex() {
+  creepsByPos.clear();
+  if (!snapshot) return;
+
+  for (const c of snapshot.creeps) {
+    const k = key(c.x, c.y);
+    const arr = creepsByPos.get(k);
+    if (arr) arr.push(c);
+    else creepsByPos.set(k, [c]);
+  }
+}
+
 /**
  * Convert mouse event -> tile coordinate (handles CSS scaling).
  */
@@ -160,6 +181,20 @@ function showStructurePanel(st: RoomStructure) {
 
   // placeholder for now
   structureDecayEl.textContent = "-";
+}
+
+function clearCreepPanel() {
+  creepSectionEl.style.display = "none";
+  creepIdEl.textContent = "-";
+  creepPosEl.textContent = "-";
+  creepTargetEl.textContent = "-";
+}
+
+function showCreepPanel(c: SimSnapshot["creeps"][number]) {
+  creepSectionEl.style.display = "block";
+  creepIdEl.textContent = c.id;
+  creepPosEl.textContent = `(${c.x}, ${c.y})`;
+  creepTargetEl.textContent = c.targetId ?? "-";
 }
 
 /**
@@ -263,39 +298,107 @@ function initInput(ws: WebSocket) {
   });
 
   canvas.addEventListener("click", (ev) => {
-    ev.stopPropagation(); // IMPORTANT: prevents instant close by document click
+    ev.stopPropagation();
 
-    // Hide any previous tooltip before processing this click
     hidePickTooltip();
 
     const t = mouseToTile(ev);
 
-    // click outside room => clear selection + panel
     if (!t) {
       selected = null;
       clearStructurePanel();
+      clearCreepPanel();
       return;
     }
 
     selected = t;
 
-    const listRaw = structuresByPos.get(key(t.x, t.y)) ?? [];
+    const creepsHere = creepsByPos.get(key(t.x, t.y)) ?? [];
+    const structsHere = structuresByPos.get(key(t.x, t.y)) ?? [];
 
-    if (listRaw.length === 0) {
+    // Nothing on tile
+    if (creepsHere.length === 0 && structsHere.length === 0) {
       clearStructurePanel();
+      clearCreepPanel();
       return;
     }
 
-    if (listRaw.length === 1) {
-      showStructurePanel(listRaw[0]);
+    // Only one thing total -> show directly
+    if (creepsHere.length + structsHere.length === 1) {
+      if (creepsHere.length === 1) {
+        showCreepPanel(creepsHere[0]);
+        clearStructurePanel();
+      } else {
+        showStructurePanel(structsHere[0]);
+        clearCreepPanel();
+      }
       return;
     }
 
-    // multiple structures: show tooltip next to cursor
-    const list = [...listRaw].sort((a, b) => structurePriority(a.type) - structurePriority(b.type));
-    showPickTooltip(list, ev.clientX, ev.clientY, (picked) => {
-      showStructurePanel(picked);
-    });
+    // Multiple items: show picker tooltip (creeps + structures)
+    // We'll create "pick items" with labels and callbacks.
+    type PickItem =
+      | { kind: "creep"; label: string; creep: SimSnapshot["creeps"][number] }
+      | { kind: "structure"; label: string; st: RoomStructure };
+
+    const picks: PickItem[] = [];
+
+    // Put creeps first (feels natural when you click a moving unit)
+    for (const c of creepsHere) {
+      picks.push({ kind: "creep", label: `Creep: ${c.id}`, creep: c });
+    }
+
+    // Then structures (sorted by priority like you already do)
+    const sortedStructs = [...structsHere].sort(
+      (a, b) => structurePriority(a.type) - structurePriority(b.type)
+    );
+    for (const st of sortedStructs) {
+      picks.push({ kind: "structure", label: `Structure: ${st.type}`, st });
+    }
+
+    // Render picker using existing tooltip DOM
+    pickTooltipEl.innerHTML = "";
+
+    const title = document.createElement("div");
+    title.className = "title";
+    title.textContent = "Select entity:";
+    pickTooltipEl.appendChild(title);
+
+    for (const p of picks) {
+      const div = document.createElement("div");
+      div.className = "item";
+      div.textContent = p.label;
+
+      div.addEventListener("click", (e) => {
+        e.stopPropagation();
+        hidePickTooltip();
+
+        if (p.kind === "creep") {
+          showCreepPanel(p.creep);
+          clearStructurePanel();
+        } else {
+          showStructurePanel(p.st);
+          clearCreepPanel();
+        }
+      });
+
+      pickTooltipEl.appendChild(div);
+    }
+
+    // Place tooltip
+    pickTooltipEl.style.display = "block";
+    pickTooltipEl.style.left = `${ev.clientX + 12}px`;
+    pickTooltipEl.style.top = `${ev.clientY + 12}px`;
+
+    // Clamp to viewport (reuse your existing clamp logic)
+    const pad = 12;
+    const rect = pickTooltipEl.getBoundingClientRect();
+    let left = rect.left;
+    let top = rect.top;
+    if (rect.right > window.innerWidth - pad) left = window.innerWidth - pad - rect.width;
+    if (rect.bottom > window.innerHeight - pad) top = window.innerHeight - pad - rect.height;
+    pickTooltipEl.style.left = `${Math.max(pad, left)}px`;
+    pickTooltipEl.style.top = `${Math.max(pad, top)}px`;
   });
 
   toggleBtn.onclick = () => {
@@ -782,10 +885,12 @@ function createWebSocket(): WebSocket {
       updateTilePanel();
       clearStructurePanel();
       hidePickTooltip();
+      clearCreepPanel();
     } else if (msg.type === "snap") {
       snapshot = msg.snap as SimSnapshot;
       tickEl.textContent = `tick: ${snapshot.tick}`;
       rebuildStructureEnergyIndex();
+      rebuildCreepIndex();
     }
   };
 

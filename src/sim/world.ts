@@ -55,11 +55,13 @@ export function loadWorld(roomExportPath: string): World {
   for (const st of room.structures) {
     const cap = defaultEnergyCapacity(st.type);
 
-    // MVP: start spawn full, others empty (simple + visible)
-    const startEnergy = cap > 0 ? cap : 0;
+    // Start-of-world rule:
+    // - spawn starts full
+    // - everything else starts empty (even if it has capacity)
+    const startEnergy = st.type === "spawn" ? cap : 0;
 
     structureEnergy.set(st.id, { energy: startEnergy, capacity: cap });
-  }
+}
 
   // Spawn creep near spawn/controller; your start is currently fixed
   const startX = 32;
